@@ -1,0 +1,29 @@
+{
+
+  "name": "MARIA_HMI",
+
+  "version": "0.0.1",
+
+  "description": "HMI for the MARIA",
+
+  "main": "server.js",
+
+  "scripts": {
+
+    "start": "node server.js"
+
+  },
+
+  "repository": {
+    "type": "git",
+    "url":
+  },
+
+  "dependencies": {
+
+    "vue": "^3.2.45"
+
+  }
+
+}
+
