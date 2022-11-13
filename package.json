@@ -8,15 +8,9 @@
 
   "main": "server.js",
 
-  "scripts": {
-
-    "start": "node server.js"
-
-  },
-
   "repository": {
     "type": "git",
-    "url":
+    "url": "https://github.com/davidhampson/MARIA-Automation"
   },
 
   "dependencies": {
