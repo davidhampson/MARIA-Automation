@@ -1,21 +1,26 @@
 {
 
-  "name": "MARIA_HMI",
+  "name": "maria-hmi",
 
   "version": "0.0.1",
 
   "description": "HMI for the MARIA",
 
-  "main": "server.js",
-
   "repository": {
+
     "type": "git",
+
     "url": "https://github.com/davidhampson/MARIA-Automation"
+
   },
 
   "dependencies": {
 
-    "vue": "^3.2.45"
+    "express": "^4.18.2",
+
+    "vue": "^3.2.45",
+
+    "vue-router": "^4.1.6"
 
   }
 
