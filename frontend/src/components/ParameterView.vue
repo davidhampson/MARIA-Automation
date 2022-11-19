@@ -7,7 +7,7 @@
 export default {
   name: 'ParameterView',
   mounted() {
-    document.title = 'MARIA (Parameters)';
+    document.title = 'MARIA | Parameters';
   }
 }
 </script>

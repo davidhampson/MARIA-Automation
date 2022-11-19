@@ -7,7 +7,7 @@
 export default {
   name: 'CameraView',
   mounted() {
-    document.title = 'MARIA (Cameras)';
+    document.title = 'MARIA | Cameras';
   }
 }
 </script>
