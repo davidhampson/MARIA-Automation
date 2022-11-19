@@ -52,28 +52,20 @@ export default {
 
 
         var trace1 = {
-
           x: unpack(rows, 'x1'), y: unpack(rows, 'y1'), z: unpack(rows, 'z1'),
 
           mode: 'markers',
           name: "Below minimum gold threshold",
 
           marker: {
-
             size: 12,
-
             line: {
-
               color: 'rgba(217, 217, 217, 0.14)',
-
               width: 0.5
             },
-
             opacity: 0.8
           },
-
           type: 'scatter3d'
-
         };
 
 
@@ -84,20 +76,13 @@ export default {
           mode: 'markers',
           name: "Above minimum gold threshold",
           marker: {
-
             color: 'rgb(127, 127, 127)',
-
             size: 12,
-
             symbol: 'circle',
-
             line: {
-
               color: 'rgb(204, 204, 204)',
-
               width: 1
             },
-
             opacity: 0.8
           },
 
@@ -127,50 +112,34 @@ export default {
       d3.csv('https://raw.githubusercontent.com/plotly/datasets/master/api_docs/mt_bruno_elevation.csv', function (err, rows) {
 
         function unpack(rows, key) {
-
           return rows.map(function (row) {
             return row[key];
           });
-
         }
 
 
         var z_data = []
 
         for (let i = 0; i < 24; i++) {
-
           z_data.push(unpack(rows, i));
-
         }
 
 
         var data = [{
-
           z: z_data,
-
           type: 'surface',
           colorscale: 'Blues'
-
-
         }];
 
 
         var layout = {
-
           title: 'Gold density',
-
           margin: {
-
             l: 0,
-
             r: 0,
-
             b: 0,
-
             t: 0,
-
           }
-
         };
 
         Plotly.newPlot('plot', data, layout);
@@ -189,7 +158,7 @@ export default {
   font-family: monospace;
   text-align: left;
   padding: 2px 25px;
-  height: 500px;
+  height: 100%;
   overflow-y: scroll;
 }
 
@@ -206,6 +175,8 @@ export default {
 .console, .graphs {
   flex-direction: column;
   padding: 20px;
+  background: white;
+  color: #999999;
 }
 
 .page {

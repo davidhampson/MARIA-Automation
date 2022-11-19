@@ -10,11 +10,11 @@
         aria-expanded="false"
         aria-label="Toggle navigation"
     >
-      <span class="navbar-toggler-icon"></span>
+      <span class="navbar-toggler-icon">👆</span>
     </button>
     <div class="collapse navbar-collapse" id="navbarText">
       <ul class="navbar-nav mr-auto">
-        <li class="nav-item active">
+        <li class="nav-item">
           <router-link class="nav-link" href="#" to="/">
             Dashboard
             <span class="sr-only">(current)</span>
@@ -37,5 +37,10 @@ export default {
 }
 </script>
 
-<style>
+<style scoped>
+.navbar {
+  color: #999999;
+  background: #2c3e50;
+}
+
 </style>
