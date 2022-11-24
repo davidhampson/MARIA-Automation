@@ -21,6 +21,7 @@
 <script>
 import Plotly from 'plotly.js-dist';
 import d3 from '@plotly/d3';
+import _ from 'underscore';
 
 export default {
   name: 'DashboardView',
@@ -41,7 +42,6 @@ export default {
     },
     drawScatterPlot() {
       this.writeConsole('Drawing scatter plot');
-      d3.csv('https://raw.githubusercontent.com/plotly/datasets/master/3d-scatter.csv', function (err, rows) {
 
         function unpack(rows, key) {
 
@@ -50,17 +50,55 @@ export default {
           });
         }
 
+        let rows = [];
+        let currentGrade = 0;
+        for (var z = 48; z > 0; z-=2) {
+          let rand = Math.random();
+          if (rand < .6) {
+            currentGrade = 0;
+          }
+          else if (rand < .8) {
+            currentGrade = 1
+          }
+          else if (rand < 1) {
+            currentGrade = 2;
+          }
+
+          for (var y = 0;y < 40; y+=4) {
+            for (var x = 0; x < 40; x+=4) {
+              //let rand = Math.random();
+
+              let record = [];
+              /*if (rand < .9)
+              else if (rand < .95) record['grade'] = 1;
+              else record['grade'] = 0;
+*/
+              record['grade'] = currentGrade;
+
+              record['z'] = z;
+              record['x'] = x;
+              record['y'] = y;
+              rows.push(record);
+
+            }
+          }
+        }
+
+        var high = _.where(rows, {"grade": 0});
+        var mid = _.where(rows, {"grade": 1});
+        var low = _.where(rows, {"grade": 2});
 
         var trace1 = {
-          x: unpack(rows, 'x1'), y: unpack(rows, 'y1'), z: unpack(rows, 'z1'),
+          x: unpack(high, 'x'), y: unpack(high, 'y'), z: unpack(high, 'z'),
 
           mode: 'markers',
-          name: "Below minimum gold threshold",
+          name: "High grade",
 
           marker: {
-            size: 12,
+            size: 6,
+            color: 'rgb(0, 155, 0)',
             line: {
-              color: 'rgba(217, 217, 217, 0.14)',
+              color: 'rgb(204, 204, 204, 0.14)',
               width: 0.5
             },
             opacity: 0.8
@@ -71,26 +109,47 @@ export default {
 
         var trace2 = {
 
-          x: unpack(rows, 'x2'), y: unpack(rows, 'y2'), z: unpack(rows, 'z2'),
+          x: unpack(mid, 'x'), y: unpack(mid, 'y'), z: unpack(mid, 'z'),
 
           mode: 'markers',
-          name: "Above minimum gold threshold",
+          name: "Mid grade",
           marker: {
-            color: 'rgb(127, 127, 127)',
-            size: 12,
+            color: 'rgb(0, 0, 155)',
+            size: 6,
             symbol: 'circle',
             line: {
-              color: 'rgb(204, 204, 204)',
-              width: 1
+              color: 'rgb(204, 204, 204, 0.14)',
+              width: 0.5
             },
-            opacity: 0.8
+            opacity: 0.7
           },
 
           type: 'scatter3d'
         };
 
+      var trace3 = {
 
-        var data = [trace1, trace2];
+        x: unpack(low, 'x'), y: unpack(low, 'y'), z: unpack(low, 'z'),
+
+        mode: 'markers',
+        name: "Low grade",
+        marker: {
+          color: 'rgba(155, 0, 0, 0.5)',
+          size: 6,
+          symbol: 'circle',
+          line: {
+            color: 'rgb(204, 204, 204, 0.14)',
+            width: 0.5
+          },
+          opacity: 0.7
+        },
+
+        type: 'scatter3d'
+      };
+
+
+
+      var data = [trace1, trace2, trace3];
 
         var layout = {
           title: "Gold density",
@@ -103,8 +162,6 @@ export default {
         };
 
         Plotly.newPlot('plot', data, layout);
-
-      });
 
     },
     drawPlot() {
