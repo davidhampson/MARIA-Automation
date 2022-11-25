@@ -21,7 +21,7 @@
 <script>
 import Plotly from 'plotly.js-dist';
 import d3 from '@plotly/d3';
-import _ from 'underscore';
+//import _ from 'underscore';
 
 export default {
   name: 'DashboardView',
@@ -33,7 +33,7 @@ export default {
   },
   mounted() {
     document.title = 'MARIA | Dashboard';
-    this.drawPlot();
+    this.drawScatterPlot();
   },
   methods: {
     writeConsole(text) {
@@ -51,29 +51,35 @@ export default {
         }
 
         let rows = [];
-        let currentGrade = 0;
-        for (var z = 48; z > 0; z-=2) {
-          let rand = Math.random();
-          if (rand < .6) {
-            currentGrade = 0;
-          }
-          else if (rand < .8) {
-            currentGrade = 1
-          }
-          else if (rand < 1) {
-            currentGrade = 2;
-          }
+        //let currentGrade = 0;
 
-          for (var y = 0;y < 40; y+=4) {
-            for (var x = 0; x < 40; x+=4) {
-              //let rand = Math.random();
+        let grades = [
+          '.1',
+          '.1',
+          '3.5',
+          '.1',
+          '.1',
+          '.1',
+          '.15',
+          '.15',
+          '4',
+          '.2',
+          '.15',
+          '.1',
+          '.1',
+          '.1',
+          '.1',
+          '.2',
+          '.5',
+          '.1',
+        ]
+        let counter = 0;
+        for (var z = 0; z < 54; z+=3) {
+          for (var y = 0;y < 24; y+=2) {
+            for (var x = 0; x < 24; x+=2) {
 
               let record = [];
-              /*if (rand < .9)
-              else if (rand < .95) record['grade'] = 1;
-              else record['grade'] = 0;
-*/
-              record['grade'] = currentGrade;
+              record['grade'] = grades[counter];
 
               record['z'] = z;
               record['x'] = x;
@@ -82,29 +88,53 @@ export default {
 
             }
           }
+          counter ++;
         }
+/*
 
         var high = _.where(rows, {"grade": 0});
         var mid = _.where(rows, {"grade": 1});
         var low = _.where(rows, {"grade": 2});
+*/
 
         var trace1 = {
-          x: unpack(high, 'x'), y: unpack(high, 'y'), z: unpack(high, 'z'),
+          x: unpack(rows, 'x'), y: unpack(rows, 'y'), z: unpack(rows, 'z'),
 
           mode: 'markers',
           name: "High grade",
 
           marker: {
             size: 6,
-            color: 'rgb(0, 155, 0)',
+            color: unpack(rows,'grade'),
+
+
+            colorscale: [
+              ['0.0',  'rgba(13, 8, 135,0.4)'],
+              ['0.05', 'rgba(17,0,168,0.4)'],
+              ['0.07', 'rgba(177, 42, 144,0.6)'],
+              ['0.2',  'rgba(225, 100, 98,0.7)'],
+              ['0.2',  'rgba(237, 121, 83,0.7)'],
+              ['0.5', 'rgba(253, 180, 47,0.7)'],
+              ['0.85', 'rgba(253,212,47,0.7)'],
+              ['1',    'rgba(0, 255, 33,0.7)']
+            ],
+            custom_data: ['grade'],
+            showscale: true,
+            opacity: 0.8,
             line: {
-              color: 'rgb(204, 204, 204, 0.14)',
+              color: 'rgba(0,0,0,0.42)',
               width: 0.5
             },
-            opacity: 0.8
+            symbol: 'circle',
+
+            colorbar: {
+              title: 'Grade (g/ton)'
+            }
           },
+
           type: 'scatter3d'
         };
+/*
 
 
         var trace2 = {
@@ -146,10 +176,11 @@ export default {
 
         type: 'scatter3d'
       };
+*/
 
 
 
-      var data = [trace1, trace2, trace3];
+      //var data = [trace1, trace2, trace3];
 
         var layout = {
           title: "Gold density",
@@ -158,10 +189,13 @@ export default {
             r: 0,
             b: 0,
             t: 0
-          }
+          },
         };
 
-        Plotly.newPlot('plot', data, layout);
+
+
+
+        Plotly.newPlot('plot', [trace1], layout);
 
     },
     drawPlot() {
