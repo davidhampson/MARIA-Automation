@@ -1,18 +1,36 @@
-
 <template>
-  <h1>Dashboard</h1>
+  <div class="settings">
+    <select v-model="selectedSettings">
+      <option v-for="setting in settings" :value="setting" :key="setting.name">{{setting.name}}</option>
+    </select>
+    <button class="save" :disabled="!hasChanges" @click="saveSettings">Save</button>
+
+    <span>
+      <label>Radial velocity</label>
+      <UpdateOnBlur v-model="selectedSettings.radial_velocity"/>
+    </span>
+    <span>
+      <label>Radial increment</label>
+      <UpdateOnBlur v-model="selectedSettings.radial_increment"/>
+    </span>
+    <span>
+      <label>Z increment</label>
+      <UpdateOnBlur v-model="selectedSettings.z_increment"/>
+    </span>
+
+    <button class="stop">Emergency Lift</button>
+  </div>
+
 
   <div class="page">
     <div class="console">
-      <h3>Console</h3>
       <div class="consoleInner">
         <div v-for="text in consoleText" :key="text">{{text}}</div>
       </div>
     </div>
     <div class="graphs">
-      <h3>Graphs</h3>
-      <button @click="drawPlot">Topographical</button>
-      <button @click="drawScatterPlot">Scatter</button>
+<!--      <button @click="drawPlot">Topographical</button>
+      <button @click="drawScatterPlot">Scatter</button>-->
       <div id="plot"/>
     </div>
   </div>
@@ -21,21 +39,75 @@
 <script>
 import Plotly from 'plotly.js-dist';
 import d3 from '@plotly/d3';
-//import _ from 'underscore';
+import axios from 'axios'
+import UpdateOnBlur from '@/components/UpdateOnBlur'
+import _ from 'underscore';
 
 export default {
   name: 'DashboardView',
   props: {},
+  components: {UpdateOnBlur},
   data() {
     return {
-      consoleText: []
+      consoleText: [],
+      selectedSettings: {
+        name: '(not saved)',
+        radial_velocity: null,
+        radial_increment: null,
+        z_increment: null
+      },
+      selectedSettingsOldVal: {
+        name: null,
+        radial_velocity: null,
+        radial_increment: null,
+        z_increment: null
+      },
+      settings: []
+    }
+  },
+  watch: {
+    selectedSettings() {
+        this.writeConsole(`Loaded ${this.selectedSettings.name} settings`);
+        this.selectedSettingsOldVal = _.extend({}, this.selectedSettings);
+    },
+    'selectedSettings.radial_velocity'(newval, oldval) {
+      if (oldval==null) return;
+      this.writeConsole(`Radial velocity changed from ${oldval} to ${newval}`);
+    },
+    'selectedSettings.radial_increment'(newval, oldval) {
+      if (oldval==null) return;
+      this.writeConsole(`Radial increment changed from ${oldval} to ${newval}`);
+    },
+    'selectedSettings.z_increment'(newval, oldval) {
+      if (oldval==null) return;
+      this.writeConsole(`Z increment changed from ${oldval} to ${newval}`);
+    },
+  },
+  computed: {
+    hasChanges(){
+      return !_.isEqual(this.selectedSettings, this.selectedSettingsOldVal);
     }
   },
   mounted() {
     document.title = 'MARIA | Dashboard';
+    this.loadSettings();
     this.drawScatterPlot();
   },
   methods: {
+    saveSettings() {
+      axios.put('//localhost:3000/settings', this.selectedSettings).then(() => {
+        this.writeConsole(`Saved settings ${this.selectedSettings.name}`);
+        this.selectedSettingsOldVal = _.extend({}, this.selectedSettings); //TODO return value from endpoint and set it that way?
+      });
+    },
+    loadSettings() {
+      axios.get('//localhost:3000/settings').then((result) => {
+        this.settings = result.data;
+        if (this.settings.length > 0) {
+          this.selectedSettings = this.settings[0];
+        }
+      });
+    },
     writeConsole(text) {
       let date = new Date();
       this.consoleText.push(`[${date.toLocaleDateString()}:${date.toLocaleTimeString()}]: ${text}`);
@@ -134,61 +206,17 @@ export default {
 
           type: 'scatter3d'
         };
-/*
-
-
-        var trace2 = {
-
-          x: unpack(mid, 'x'), y: unpack(mid, 'y'), z: unpack(mid, 'z'),
-
-          mode: 'markers',
-          name: "Mid grade",
-          marker: {
-            color: 'rgb(0, 0, 155)',
-            size: 6,
-            symbol: 'circle',
-            line: {
-              color: 'rgb(204, 204, 204, 0.14)',
-              width: 0.5
-            },
-            opacity: 0.7
-          },
-
-          type: 'scatter3d'
-        };
-
-      var trace3 = {
-
-        x: unpack(low, 'x'), y: unpack(low, 'y'), z: unpack(low, 'z'),
-
-        mode: 'markers',
-        name: "Low grade",
-        marker: {
-          color: 'rgba(155, 0, 0, 0.5)',
-          size: 6,
-          symbol: 'circle',
-          line: {
-            color: 'rgb(204, 204, 204, 0.14)',
-            width: 0.5
-          },
-          opacity: 0.7
-        },
-
-        type: 'scatter3d'
-      };
-*/
-
-
 
       //var data = [trace1, trace2, trace3];
 
         var layout = {
           title: "Gold density",
+          height: 700,
           margin: {
             l: 0,
             r: 0,
             b: 0,
-            t: 0
+            t: 50
           },
         };
 
@@ -273,5 +301,55 @@ export default {
 .page {
   flex-direction: row;
 }
+
+.settings {
+  padding: 2em;
+  width: 80%;
+  margin:  2em auto;
+  border: #666666 3px double;
+  display: flex;
+  align-items: center;
+}
+
+span {
+  display: flex;
+  align-items: baseline;
+}
+
+label {
+  margin-left: 2em;
+  flex: 1 1;
+}
+
+button, input, select {
+  flex: 1 1;
+  margin: 0.5em 1em;
+  border: none;
+  color: white;
+  padding: 0.25em 0.5em;
+  cursor: pointer;
+  background-color: #666666;
+}
+
+button:hover {
+  background-color: #cccccc;
+  color: #2c3e50;
+}
+
+button:disabled {
+  background-color: #cccccc;
+  color: #666666;
+}
+
+.save {
+  flex: 0 1 5em;
+}
+
+.stop {
+  background-color: #f44336;
+}
+
+.stop:hover {background: #da190b;}
+
 
 </style>
