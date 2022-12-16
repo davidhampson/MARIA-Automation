@@ -24,6 +24,7 @@
     </span>
     </div>
 
+    <button class="start" @click="generateData()">Start Sweep</button>
     <button class="stop">Emergency Lift</button>
     <br style="clear:both">
 
@@ -70,7 +71,9 @@
 
 <script>
 import Plotly from 'plotly.js-dist';
+/*
 import d3 from '@plotly/d3';
+*/
 import axios from 'axios'
 import UpdateOnBlur from '@/components/UpdateOnBlur'
 import _ from 'underscore';
@@ -103,7 +106,8 @@ export default {
         angle: 0,
         depth: 0,
 
-      }
+      },
+      currentRenderPoint: 1
     }
   },
   watch: {
@@ -131,17 +135,16 @@ export default {
   },
   mounted() {
     document.title = 'MARIA | Dashboard';
-    this.generateData();
     this.loadSettings();
-    let i = 1;
-    let render = () => {
-      if (i <= this.points.length) {
-        this.drawScatterPlot(this.points.slice(0,i));
-        this.state.long = this.points[i]['x'];
-        this.state.lat = this.points[i]['y'];
-        this.state.depth = this.points[i]['z'];
-        i += 1;
 
+    let render = () => {
+      if (this.currentRenderPoint <= this.points.length) {
+        this.drawScatterPlot(this.points.slice(0,this.currentRenderPoint));
+        this.state.long = this.points[this.currentRenderPoint]['x'].toFixed(2);
+        this.state.lat = this.points[this.currentRenderPoint]['y'].toFixed(2);
+        this.state.depth = this.points[this.currentRenderPoint]['z'].toFixed(2);
+        this.state.angle = this.points[this.currentRenderPoint]['angle'].toFixed(2) + " degrees";
+        this.currentRenderPoint += 1;
       }
     };
 
@@ -170,30 +173,64 @@ export default {
       let date = new Date();
       this.consoleText.push(`[${date.toLocaleDateString()}:${date.toLocaleTimeString()}]: ${text}`);
     },
-    generateData() {
+    generateData(originX=0,originY=0,depth=-70,angle_start=-90,angle_finish=90,distance=50) {
       this.writeConsole('Generating data');
+      this.points = [];
 
 
       //let currentGrade = 0;
+      this.points.push({
+        "x": originX,
+        "y": originY,
+        "z": 0,
+        "angle": 0
+      });
 
-      let grades = ['.1','.1','3.5','.1','.1','.1','.15','.15','4','.2','.15','.1','.1','.1','.1','.2','.5','.1',]
+      let grades = ['.1','.2','.1','.15','3.5','.1','.1','.15','4','.2','.15','.1']
       let counter = 0;
-      for (var z = 54; z > 0; z -= 3) {
-        for (var y = 0; y < 24; y += 2) {
-          for (var x = 0; x < 24; x += 2) {
+      let wallAngles = Math.PI/4;
 
-            let record = [];
-            record['grade'] = grades[counter];
+      let shrink =  1/((1/this.selectedSettings.z_increment) * Math.tan(wallAngles));
+      let dist = this.selectedSettings.radial_increment;
+      let direction = 1;
 
-            record['z'] = z;
-            record['x'] = x;
-            record['y'] = y;
-            this.points.push(record);
 
+      for (let z = -20; z > depth; z -= this.selectedSettings.z_increment) { //at each depth
+
+        for (dist=distance-(shrink*counter); dist > (shrink*counter); dist -= (this.selectedSettings.radial_increment)) { //at each distance from boat
+          let arc_length = (2*Math.PI*dist) * ((angle_finish-angle_start)/360);
+          let step_size = this.selectedSettings.radial_velocity/arc_length;
+
+
+          if (direction == 1) {
+            for (let angle = angle_start; angle <= angle_finish; angle += step_size) { // at each angle
+              this.setPoint(originX, originY, z, angle, dist, grades[counter]);
+            }
+          } else {
+            for (let angle = angle_finish; angle >= angle_start; angle -= step_size) { // at each angle
+              this.setPoint(originX, originY, z, angle, dist, grades[counter]);
+            }
           }
+
+          // Make sure we go to the edge
+          this.setPoint(originX,originY,z,angle_finish,dist, grades[counter]);
+          direction = -direction;
         }
+
         counter++;
+        if (distance-(shrink*counter) < 0) break;
       }
+      this.currentRenderPoint = 1;
+
+    },
+    setPoint(originX,originY,depth,angle,dist, grade) {
+      let record = [];
+      record['grade'] = grade;
+      record['z'] = depth;
+      record['x'] = originX + dist*Math.cos(angle*(Math.PI/180));
+      record['y'] = originY + dist*Math.sin(angle*(Math.PI/180));
+      record['angle'] = angle;
+      this.points.push(record);
     },
     drawScatterPlot(rows) {
 
@@ -212,17 +249,15 @@ export default {
         marker: {
           size: 6,
           color: unpack(rows, 'grade'),
-
-
           colorscale: [
             ['0.0', 'rgba(13, 8, 135,0.4)'],
-            ['0.05', 'rgba(17,0,168,0.4)'],
+            ['0.03', 'rgba(17,0,168,0.4)'],
             ['0.07', 'rgba(177, 42, 144,0.6)'],
             ['0.2', 'rgba(225, 100, 98,0.7)'],
             ['0.2', 'rgba(237, 121, 83,0.7)'],
             ['0.5', 'rgba(253, 180, 47,0.7)'],
             ['0.85', 'rgba(253,212,47,0.7)'],
-            ['1', 'rgba(0, 255, 33,0.7)']
+            ['1', 'rgba(0, 255, 33,0.7)'],
           ],
           custom_data: ['grade'],
           showscale: true,
@@ -235,13 +270,14 @@ export default {
 
           colorbar: {
             title: 'Grade (g/ton)'
-          }
+          },
+          cmin: 0,
+          cmid: 0.2,
+          cmax: 4.5,
         },
 
         type: 'scatter3d'
       };
-
-      //var data = [trace1, trace2, trace3];
 
       var layout = {
         title: "Gold density",
@@ -252,53 +288,15 @@ export default {
           b: 0,
           t: 50
         },
-        uirevision: 'true',
+        "uirevision": true,
+
       };
+
 
       if (this.plot) Plotly.react('plot', [trace1], layout);
       else this.plot = Plotly.newPlot('plot', [trace1], layout);
 
-
     },
-    drawPlot() {
-      this.writeConsole('Drawing topigraphic plot')
-      d3.csv('https://raw.githubusercontent.com/plotly/datasets/master/api_docs/mt_bruno_elevation.csv', function (err, rows) {
-
-        function unpack(rows, key) {
-          return rows.map(function (row) {
-            return row[key];
-          });
-        }
-
-
-        var z_data = []
-
-        for (let i = 0; i < 24; i++) {
-          z_data.push(unpack(rows, i));
-        }
-
-
-        var data = [{
-          z: z_data,
-          type: 'surface',
-          colorscale: 'Blues'
-        }];
-
-
-        var layout = {
-          title: 'Gold density',
-          margin: {
-            l: 0,
-            r: 0,
-            b: 0,
-            t: 0,
-          }
-        };
-
-        Plotly.newPlot('plot', data, layout);
-
-      });
-    }
   }
 };
 </script>
@@ -353,7 +351,6 @@ legend {
   margin: auto;
   gap: 10px;
   vertical-align: middle;
-  height: 400px;
 }
 
 
@@ -409,6 +406,14 @@ button:disabled {
 
 .stop:hover {
   background: #da190b;
+}
+
+.start {
+  background-color: #4CAF50;
+}
+
+.start:hover {
+  background: #68da0b;
 }
 
 

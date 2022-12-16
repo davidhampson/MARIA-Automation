@@ -43,6 +43,14 @@ app.post('/points', (req, res) => {
     res.send();
 });
 
+app.get('/points', (req, res) => {
+    con.query("SELECT * FROM points"), (error, result) => {
+        console.log(result||error);
+        res.send(result);
+    });
+    res.send();
+});
+
 app.put('/settings', (req, res) => {
     con.query(`UPDATE settings SET radial_velocity = ${req.body.radial_velocity}, radial_increment = ${req.body.radial_increment}, z_increment = ${req.body.z_increment} WHERE name = '${req.body.name}'`, (error, result) => {
         console.log(result||error);
