@@ -1,61 +1,74 @@
 <template>
   <div @mouseup="clicking = false" @mousedown="clicking=true">
-    <div class="topBox">
-  <fieldset class="settings">
-    <legend>Control Parameters</legend>
-    <span>
-    <select v-model="selectedSettings">
-      <option v-for="setting in settings" :value="setting" :key="setting.name">{{ setting.name }}</option>
-    </select>
-    <button class="save" :disabled="!hasChanges" @click="saveSettings">Save</button>
-    </span>
-    <div class="paramBox">
-    <span>
-      <label>Radial velocity</label>
-      <UpdateOnBlur v-model="selectedSettings.radial_velocity"/>
-    </span>
-    <span>
-      <label>Radial increment</label>
-      <UpdateOnBlur v-model="selectedSettings.radial_increment"/>
-    </span>
-    <span>
-      <label>Z increment</label>
-      <UpdateOnBlur v-model="selectedSettings.z_increment"/>
-    </span>
-    </div>
-
-    <button class="start" @click="generateData()">Start Sweep</button>
-    <button class="stop">Emergency Lift</button>
-    <br style="clear:both">
-
-  </fieldset>
-
-  <fieldset class="params">
-    <legend>Device State</legend>
-    <div class="paramBox">
+  <div class="page">
+    <div class="console">
+      <fieldset class="params">
+        <legend>Device State</legend>
+        <div class="paramBox">
       <span>
         <label>Latitude</label>
         <input v-model="state.lat"/>
       </span>
-      <span>
+          <span>
         <label>Longitude</label>
         <input v-model="state.long"/>
       </span>
-      <span>
+          <span>
         <label>Angle</label>
         <input v-model="state.angle"/>
       </span>
-      <span>
+          <span>
         <label>Depth</label>
         <input v-model="state.depth"/>
       </span>
-    </div>
-  </fieldset>
-    </div>
+        </div>
+      </fieldset>
+      <fieldset class="settings">
+        <legend>Control Parameters</legend>
+        <span>
+    <select v-model="selectedSettings">
+      <option v-for="setting in settings" :value="setting" :key="setting.name">{{ setting.name }}</option>
+    </select>
+    <button class="save" :disabled="!hasChanges || selectedSettings.name == null" @click="saveSettings">Save</button>
+    <button class="save" @click="saveNewSettings">New</button>
+    </span>
+        <div class="paramBox">
+    <span>
+      <label>Radial velocity</label>
+      <UpdateOnBlur v-model="selectedSettings.radial_velocity"/>
+    </span>
+          <span>
+      <label>Radial increment</label>
+      <UpdateOnBlur v-model="selectedSettings.radial_increment"/>
+    </span>
+          <span>
+      <label>Z increment</label>
+      <UpdateOnBlur v-model="selectedSettings.z_increment"/>
+    </span>
+          <span>
+      <label>Depth start</label>
+      <UpdateOnBlur v-model="selectedSettings.depth_start"/>
+    </span>
+          <span>
+      <label>Max depth</label>
+      <UpdateOnBlur v-model="selectedSettings.depth_max"/>
+    </span>
+          <span>
+      <label>Wall angle</label>
+      <UpdateOnBlur v-model="selectedSettings.wall_angle"/>
+    </span>
+          <span>
+      <label>Min distance</label>
+      <UpdateOnBlur v-model="selectedSettings.min_distance"/>
+    </span>
+        </div>
 
+        <button class="start" @click="plotTrenchWithSelectedSettings">Start Sweep</button>
+        <button class="start" @click="previewTrenchWithSelectedSettings">Preview Sweep</button>
+        <button class="stop" @click="currentRenderPoint = -1; plot.data=[];">Emergency Lift</button>
+        <br style="clear:both">
 
-  <div class="page">
-    <div class="console">
+      </fieldset>
       <div class="consoleInner">
         <div v-for="text in consoleText" :key="text">{{ text }}</div>
       </div>
@@ -77,6 +90,19 @@ import d3 from '@plotly/d3';
 import axios from 'axios'
 import UpdateOnBlur from '@/components/UpdateOnBlur'
 import _ from 'underscore';
+const CRANE_ARM_LENGTH = 50;
+const settingsTemplate = {
+  name: null,
+  radial_velocity: null,
+  radial_increment: null,
+  z_increment: null,
+  min_distance: null, // from crane
+  wall_angle: null,
+  depth_start: null,
+  depth_max: null,
+  angle_start: null,
+  angle_finish: null,
+};
 
 export default {
   name: 'DashboardView',
@@ -85,18 +111,8 @@ export default {
   data() {
     return {
       consoleText: [],
-      selectedSettings: {
-        name: '(not saved)',
-        radial_velocity: null,
-        radial_increment: null,
-        z_increment: null
-      },
-      selectedSettingsOldVal: {
-        name: null,
-        radial_velocity: null,
-        radial_increment: null,
-        z_increment: null
-      },
+      selectedSettings: _.extend({},settingsTemplate),
+      selectedSettingsOldVal: _.extend({},settingsTemplate),
       settings: [],
       points: [],
       clicking: false,
@@ -116,16 +132,31 @@ export default {
       this.selectedSettingsOldVal = _.extend({}, this.selectedSettings);
     },
     'selectedSettings.radial_velocity'(newval, oldval) {
-      if (oldval == null) return;
-      this.writeConsole(`Radial velocity changed from ${oldval} to ${newval}`);
+      this.reportChange("Radial velocity", newval, oldval);
     },
     'selectedSettings.radial_increment'(newval, oldval) {
-      if (oldval == null) return;
-      this.writeConsole(`Radial increment changed from ${oldval} to ${newval}`);
+      this.reportChange("Radial increment", newval, oldval);
     },
     'selectedSettings.z_increment'(newval, oldval) {
-      if (oldval == null) return;
-      this.writeConsole(`Z increment changed from ${oldval} to ${newval}`);
+      this.reportChange("Z increment", newval, oldval);
+    },
+    'selectedSettings.min_distance'(newval, oldval) {
+      this.reportChange("Minimum distance", newval, oldval);
+    },
+    'selectedSettings.wall_angle'(newval, oldval) {
+      this.reportChange("Wall angle", newval, oldval);
+    },
+    'selectedSettings.depth_start'(newval, oldval) {
+      this.reportChange("Depth start", newval, oldval);
+    },
+    'selectedSettings.depth_max'(newval, oldval) {
+      this.reportChange("Max depth", newval, oldval);
+    },
+    'selectedSettings.angle_start'(newval, oldval) {
+      this.reportChange("Angle start", newval, oldval);
+    },
+    'selectedSettings.angle_finish'(newval, oldval) {
+      this.reportChange("Angle finish", newval, oldval);
     },
   },
   computed: {
@@ -136,26 +167,40 @@ export default {
   mounted() {
     document.title = 'MARIA | Dashboard';
     this.loadSettings();
+    this.currentRenderPoint = 0;
 
     let render = () => {
-      if (this.currentRenderPoint <= this.points.length) {
-        this.drawScatterPlot(this.points.slice(0,this.currentRenderPoint));
+      if (this.currentRenderPoint < this.points.length) {
+        this.drawScatterPlot(this.points.slice(0,this.currentRenderPoint+1));
         this.state.long = this.points[this.currentRenderPoint]['x'].toFixed(2);
         this.state.lat = this.points[this.currentRenderPoint]['y'].toFixed(2);
         this.state.depth = this.points[this.currentRenderPoint]['z'].toFixed(2);
         this.state.angle = this.points[this.currentRenderPoint]['angle'].toFixed(2) + " degrees";
-        this.currentRenderPoint += 1;
+        this.currentRenderPoint ++;
+
       }
     };
 
-    this.timer = setInterval(() => {if (!this.clicking) render()},100);
+    this.timer = setInterval(() => {if (!this.clicking) render()},1);
 
   },
   beforeUnmount() {
     clearInterval(this.timer)
   },
   methods: {
+    reportChange(field,newval,oldval) {
+      if (oldval == null) return;
+      this.writeConsole(`${field} changed from ${oldval} to ${newval}`);
+    },
+    saveNewSettings() {
+      this.selectedSettings.name = prompt("Name?");
+      axios.post('//localhost:3000/settings', this.selectedSettings).then(() => {
+        this.writeConsole(`Saved new settings ${this.selectedSettings.name}`);
+        this.selectedSettingsOldVal = _.extend({}, this.selectedSettings); //TODO return value from endpoint and set it that way?
+      });
+    },
     saveSettings() {
+      if (this.selectedSettings.name === null) this.selectedSettings.name = prompt("Name?") ;
       axios.put('//localhost:3000/settings', this.selectedSettings).then(() => {
         this.writeConsole(`Saved settings ${this.selectedSettings.name}`);
         this.selectedSettingsOldVal = _.extend({}, this.selectedSettings); //TODO return value from endpoint and set it that way?
@@ -171,66 +216,141 @@ export default {
     },
     writeConsole(text) {
       let date = new Date();
-      this.consoleText.push(`[${date.toLocaleDateString()}:${date.toLocaleTimeString()}]: ${text}`);
+      this.consoleText.push(`[${date.toLocaleTimeString()}]: ${text}`);
     },
-    generateData(originX=0,originY=0,depth=-70,angle_start=-90,angle_finish=90,distance=50) {
-      this.writeConsole('Generating data');
-      this.points = [];
+    previewTrenchWithSelectedSettings() {
+      let points = this.plotTrench(
+          [0,0,0],
+          parseFloat(this.selectedSettings.z_increment),
+          parseFloat(this.selectedSettings.radial_increment),
+          parseFloat(this.selectedSettings.radial_velocity),
+          parseFloat(this.selectedSettings.depth_start),
+          parseFloat(this.selectedSettings.depth_max),
+          parseFloat(this.selectedSettings.angle_start),
+          parseFloat(this.selectedSettings.angle_finish),
+          parseFloat(this.selectedSettings.min_distance),
+          CRANE_ARM_LENGTH,
+          this.selectedSettings.wall_angle,
+      );
+      this.writeConsole('Done.');
+      this.points = points;
+      this.currentRenderPoint = this.points.length-1;
+    },
+    plotTrenchWithSelectedSettings() {
+      let points = this.plotTrench(
+          [0,0,0],
+          parseFloat(this.selectedSettings.z_increment),
+          parseFloat(this.selectedSettings.radial_increment),
+          parseFloat(this.selectedSettings.radial_velocity),
+          parseFloat(this.selectedSettings.depth_start),
+          parseFloat(this.selectedSettings.depth_max),
+          parseFloat(this.selectedSettings.angle_start),
+          parseFloat(this.selectedSettings.angle_finish),
+          parseFloat(this.selectedSettings.min_distance),
+          CRANE_ARM_LENGTH,
+          this.selectedSettings.wall_angle,
+      );
+      this.points = points;
+      this.writeConsole('Starting animation.');
+      this.currentRenderPoint = 1;
+
+
+    },
+    plotTrench(origin=[0,0,0],
+               zIncrement=5,
+               radialIncrement=4,
+               radialVelocity=350,
+               depthStart=-20,
+               maxDepth=-900,
+               angleStart=-90,
+               angleFinish=90,
+               minDistance=10,
+               distance=50,
+               wallAngles=45) {
+
+      if (this.plot){
+        this.plot.data = [];
+        this.plot=null;
+      }
+
+      this.writeConsole('Generating data.');
+      let points = [];
 
 
       //let currentGrade = 0;
-      this.points.push({
-        "x": originX,
-        "y": originY,
-        "z": 0,
-        "angle": 0
+      points.push({
+        x: origin[0],
+        y: origin[1],
+        z: origin[2],
+        angle: 0,
       });
-
-      let grades = ['.1','.2','.1','.15','3.5','.1','.1','.15','4','.2','.15','.1']
+      //TODO receive grade from attached IBF machine
+      let gradesTemplate = ['.1','.2','.1','.15','3.5','.1','.1','.15','4','.2','.15','.1','.15','4','.2','.15','.1'];
+      let grades = ['.1','.2','.1','.15'];
+      for (let m = 0; m < 1000; m ++) {
+        grades.push(_.sample(gradesTemplate));
+      }
       let counter = 0;
-      let wallAngles = Math.PI/4;
-
-      let shrink =  1/((1/this.selectedSettings.z_increment) * Math.tan(wallAngles));
-      let dist = this.selectedSettings.radial_increment;
+      wallAngles *= (Math.PI/180); // convert to radians
+      let shrink =  zIncrement / Math.tan(wallAngles);
+      let dist = distance-(shrink*counter);
       let direction = 1;
+      let shrunkAngleStart = angleStart
+      let shrunkAngleFinish = angleFinish;
 
+      let z;
 
-      for (let z = -20; z > depth; z -= this.selectedSettings.z_increment) { //at each depth
-
-        for (dist=distance-(shrink*counter); dist > (shrink*counter); dist -= (this.selectedSettings.radial_increment)) { //at each distance from boat
-          let arc_length = (2*Math.PI*dist) * ((angle_finish-angle_start)/360);
-          let step_size = this.selectedSettings.radial_velocity/arc_length;
-
-
-          if (direction == 1) {
-            for (let angle = angle_start; angle <= angle_finish; angle += step_size) { // at each angle
-              this.setPoint(originX, originY, z, angle, dist, grades[counter]);
-            }
-          } else {
-            for (let angle = angle_finish; angle >= angle_start; angle -= step_size) { // at each angle
-              this.setPoint(originX, originY, z, angle, dist, grades[counter]);
-            }
-          }
-
-          // Make sure we go to the edge
-          this.setPoint(originX,originY,z,angle_finish,dist, grades[counter]);
-          direction = -direction;
+      for (z = depthStart; z >= maxDepth; z -= zIncrement) { //at each depth
+        if (distance-(shrink*counter) < (shrink*counter)) {
+          z += zIncrement
+          break;
         }
 
+        for (dist=distance-(shrink*counter); dist > (minDistance + (shrink*counter)); dist -= (radialIncrement)) { //at each distance from boat
+          let angleShrink =  Math.atan((depthStart-z)/(dist*Math.sin(wallAngles))) * (180/Math.PI);
+          //let angleShrink =  Math.atan((zIncrement)/(dist*Math.cos(wallAngles))) * (180/Math.PI);
+          //let angleShrink =  Math.atan((Math.cos(wallAngles))) * (180/Math.PI);
+          shrunkAngleStart = angleStart + ((angleShrink));
+          shrunkAngleFinish = angleFinish - ((angleShrink));
+          if (shrunkAngleStart > shrunkAngleFinish) {
+            alert('condition hit');
+            break;
+          }
+
+          let arc_length = (2*Math.PI*dist) * ((shrunkAngleFinish-shrunkAngleStart)/360);
+          let step_size = radialVelocity/arc_length;
+
+          if (direction === 1) {
+            for (let angle = shrunkAngleStart; angle <= shrunkAngleFinish; angle += step_size) // at each angle
+              points.push(this.makePoint(origin, z, angle, dist, grades[counter]));
+
+            // make sure we go to edge
+            points.push(this.makePoint(origin,z,shrunkAngleFinish,dist, grades[counter]));
+          } else {
+            for (let angle = shrunkAngleFinish; angle >= shrunkAngleStart; angle -= step_size) // at each angle
+              points.push(this.makePoint(origin, z, angle, dist, grades[counter]));
+
+            // Make sure we go to the edge
+            points.push(this.makePoint(origin,z,shrunkAngleStart,dist, grades[counter]));
+          }
+          
+          direction = -direction;
+        }
+        if (shrunkAngleStart > shrunkAngleFinish) break;
         counter++;
-        if (distance-(shrink*counter) < 0) break;
       }
-      this.currentRenderPoint = 1;
+      //let depth_max = z+zIncrement;
+      return points;
 
     },
-    setPoint(originX,originY,depth,angle,dist, grade) {
+    makePoint(origin,depth,angle,dist, grade) {
       let record = [];
       record['grade'] = grade;
       record['z'] = depth;
-      record['x'] = originX + dist*Math.cos(angle*(Math.PI/180));
-      record['y'] = originY + dist*Math.sin(angle*(Math.PI/180));
+      record['x'] = origin[0] + dist*Math.cos(angle*(Math.PI/180));
+      record['y'] = origin[1] + dist*Math.sin(angle*(Math.PI/180));
       record['angle'] = angle;
-      this.points.push(record);
+      return record;
     },
     drawScatterPlot(rows) {
 
@@ -254,7 +374,7 @@ export default {
             ['0.03', 'rgba(17,0,168,0.4)'],
             ['0.07', 'rgba(177, 42, 144,0.6)'],
             ['0.2', 'rgba(225, 100, 98,0.7)'],
-            ['0.2', 'rgba(237, 121, 83,0.7)'],
+            ['0.4', 'rgba(237, 121, 83,0.7)'],
             ['0.5', 'rgba(253, 180, 47,0.7)'],
             ['0.85', 'rgba(253,212,47,0.7)'],
             ['1', 'rgba(0, 255, 33,0.7)'],
@@ -272,8 +392,7 @@ export default {
             title: 'Grade (g/ton)'
           },
           cmin: 0,
-          cmid: 0.2,
-          cmax: 4.5,
+          cmax: 4,
         },
 
         type: 'scatter3d'
@@ -281,7 +400,8 @@ export default {
 
       var layout = {
         title: "Gold density",
-        height: 550,
+        height: 1000,
+        width: 1500,
         margin: {
           l: 0,
           r: 0,
@@ -289,7 +409,10 @@ export default {
           t: 50
         },
         "uirevision": true,
-
+        /*x:[-60,60],
+        y:[-60,60],
+        z:[0,-90],
+        autoresize: 'false'*/
       };
 
 
@@ -309,17 +432,22 @@ export default {
   font-family: monospace;
   text-align: left;
   padding: 2px 25px;
-  height: 100%;
+  height: 250px;
   overflow-y: scroll;
 }
 
 #plot {
-  margin-top: 50px;
+  margin: 50px auto;
 }
 
-.page, .console, .graphs {
+.page, .graphs {
   display: flex;
   flex: 1 1;
+}
+
+.console {
+  display: flex;
+  flex: 0 1 20%;
 }
 
 
@@ -327,6 +455,7 @@ export default {
   display: flex;
   flex-direction: column;
 }
+
 
 .console, .graphs {
   flex-direction: column;
@@ -356,8 +485,8 @@ legend {
 
 
 .settings, .params {
-  padding: 2em;
-  margin: 2em auto;
+  padding: 1em;
+  margin: 1em auto;
   border: #666666 3px double;
   display: flex;
   flex: 1 1;
@@ -397,7 +526,7 @@ button:disabled {
 }
 
 .save {
-  flex: 0 1 5em;
+  flex: 0 1 3.5em;
 }
 
 .stop {

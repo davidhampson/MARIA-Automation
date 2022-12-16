@@ -43,16 +43,18 @@ app.post('/points', (req, res) => {
     res.send();
 });
 
-app.get('/points', (req, res) => {
-    con.query("SELECT * FROM points"), (error, result) => {
-        console.log(result||error);
-        res.send(result);
-    });
-    res.send();
-});
-
 app.put('/settings', (req, res) => {
-    con.query(`UPDATE settings SET radial_velocity = ${req.body.radial_velocity}, radial_increment = ${req.body.radial_increment}, z_increment = ${req.body.z_increment} WHERE name = '${req.body.name}'`, (error, result) => {
+    con.query("UPDATE settings SET " +
+               `radial_velocity = ${req.body.radial_velocity}, ` +
+               `radial_increment = ${req.body.radial_increment}, ` +
+               `z_increment = ${req.body.z_increment}, ` +
+               `min_distance = ${req.body.min_distance}, ` +
+               `depth_start = ${req.body.depth_start}, ` +
+               `depth_max = ${req.body.depth_max}, ` +
+               `angle_start = ${req.body.angle_start}, ` +
+               `angle_finish = ${req.body.angle_finish}, ` +
+               `wall_angle = ${req.body.wall_angle} ` +
+                `WHERE name = '${req.body.name}'`, (error, result) => {
         console.log(result||error);
         res.send(result);
     });
@@ -76,8 +78,8 @@ app.get('/settings', (req, res) => {
 });
 
 app.post('/settings', (req, res, next) => {
-    con.query("INSERT INTO settings (name, radial_velocity, radial_increment, z_increment) VALUES " +
-        `('${req.body.name}', ${req.body.radial_velocity}, ${req.body.radial_increment}, ${req.body.z_increment})`,
+    con.query("INSERT INTO settings (name, radial_velocity, radial_increment, z_increment, min_distance, wall_angle, depth_start, depth_max, angle_start, angle_finish) VALUES " +
+        `('${req.body.name}', ${req.body.radial_velocity}, ${req.body.radial_increment}, ${req.body.z_increment}, ${req.body.min_distance},${req.body.wall_angle},${req.body.depth_start},${req.body.depth_max},${req.body.angle_start},${req.body.angle_finish})`,
         (error, result) => {
             console.log(result||error);
             if (error) res.status(500)
