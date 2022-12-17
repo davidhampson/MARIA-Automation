@@ -13,6 +13,9 @@ export default {
       focus: false
     }
   },
+  created() {
+    this.input = this.modelValue;
+  },
   watch: {
     modelValue(val) {
       this.input = val;

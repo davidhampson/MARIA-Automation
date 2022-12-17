@@ -14,7 +14,7 @@ CREATE TABLE points (
     x DOUBLE,
     y DOUBLE,
     z DOUBLE,
-    gold_density DOUBLE,
+    grade DOUBLE,
     sweep_id INT,
     FOREIGN KEY (sweep_id) REFERENCES sweeps(id),
     PRIMARY KEY (id)

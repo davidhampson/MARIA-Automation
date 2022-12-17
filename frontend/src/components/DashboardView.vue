@@ -5,43 +5,60 @@
           <fieldset class="settings">
             <legend>Control Parameters</legend>
             <span>
-    <select v-model="selectedSettings">
-      <option v-for="setting in settings" :value="setting" :key="setting.name">{{ setting.name }}</option>
-    </select>
-    <button class="save" :disabled="!hasChanges || selectedSettings.name == null" @click="saveSettings">Save</button>
-    <button class="save" @click="saveNewSettings">New</button>
-    </span>
+            <select v-model="selectedSettings">
+              <option v-for="setting in settings" :value="setting" :key="setting.name">{{ setting.name }}</option>
+            </select>
+            <button class="save" :disabled="!hasChanges || selectedSettings.name == null" @click="saveSettings">Save</button>
+            <button class="save" @click="saveNewSettings">New</button>
+            </span>
             <span>
-      <label>Radial velocity</label>
-      <UpdateOnBlur v-model="selectedSettings.radial_velocity"/>
-    </span>
+              <label>Radial velocity</label>
+              <UpdateOnBlur v-model="selectedSettings.radial_velocity"/>
+            </span>
             <span>
-      <label>Radial increment</label>
-      <UpdateOnBlur v-model="selectedSettings.radial_increment"/>
-    </span>
+              <label>Radial increment</label>
+              <UpdateOnBlur v-model="selectedSettings.radial_increment"/>
+            </span>
             <span>
-      <label>Z increment</label>
-      <UpdateOnBlur v-model="selectedSettings.z_increment"/>
-    </span>
+              <label>Z increment</label>
+              <UpdateOnBlur v-model="selectedSettings.z_increment"/>
+            </span>
             <span>
-      <label>Depth start</label>
-      <UpdateOnBlur v-model="selectedSettings.depth_start"/>
-    </span>
+              <label>Depth start</label>
+              <UpdateOnBlur v-model="selectedSettings.depth_start"/>
+            </span>
             <span>
-      <label>Max depth</label>
-      <UpdateOnBlur v-model="selectedSettings.depth_max"/>
-    </span>
+              <label>Max depth</label>
+              <UpdateOnBlur v-model="selectedSettings.depth_max"/>
+            </span>
             <span>
-      <label>Wall angle</label>
-      <UpdateOnBlur v-model="selectedSettings.wall_angle"/>
-    </span>
+              <label>Wall angle</label>
+              <UpdateOnBlur v-model="selectedSettings.wall_angle"/>
+            </span>
             <span>
-      <label>Min distance</label>
-      <UpdateOnBlur v-model="selectedSettings.min_distance"/>
-    </span>
+              <label>Min distance</label>
+              <UpdateOnBlur v-model="selectedSettings.min_distance"/>
+            </span>
+            <span>
+              <label>Origin X</label>
+              <UpdateOnBlur v-model="originX"/>
+            </span>
+            <span>
+              <label>Origin Y</label>
+              <UpdateOnBlur v-model="originY"/>
+            </span>
+            <span>
+              <label>Origin Z</label>
+              <UpdateOnBlur v-model="originZ"/>
+            </span>
+            <span>
+              <label>Origin Angle</label>
+              <UpdateOnBlur v-model="originAngle"/>
+            </span>
 
             <button class="start" @click="digTrench">Start Sweep</button>
-            <button class="start" @click="previewTrench">Preview Sweep</button>
+            <button @click="previewTrench">Preview Sweep</button>
+            <button @click="saveSweep">Save Sweep</button>
             <button class="stop" @click="clearTimer">Emergency Lift</button>
           </fieldset>
           <div class="console">
@@ -85,11 +102,13 @@
           <label>Angle finish</label>
           <UpdateOnBlur v-model="selectedSettings.angle_finish"/>
         </span>
-          <button class="start" @disabled="dataPoints.length === 0" @click="horizons = computeHorizons()">
+          <button @disabled="dataPoints.length === 0" @click="horizons = computeHorizons()">
             Compute Horizons
           </button>
-          <button class="start" @click="previewTrench">Preview Sweep</button>
-
+<!--
+          <button @click="loadSweep">Load Points</button>
+-->
+          <button @click="previewTrench">Preview Sweep</button>
           <table class="depthTable" v-show="horizons.length !== 0">
             <thead>
             <tr>
@@ -98,13 +117,16 @@
             </tr>
             </thead>
             <tbody>
+            <tr><td colspan="2" display="flex"></td></tr>
             <tr v-for="horizon in horizons" :key="horizon.depthMin"
-                @click="filter=(x)=>x.z <= horizon.depthMax && x.z > horizon.depthMin">
+                @click="setHorizon(horizon.depthMax,horizon.depthMin)">
               <td>{{ horizon.depthMax }}</td>
               <td>{{ horizon.average }}</td>
             </tr>
+
             </tbody>
           </table>
+          <button v-show="filterChanged" class="stop" @click="filter = (x)=>x; filterChanged=false">Clear filter</button>
 
         </fieldset>
       </div>
@@ -121,6 +143,9 @@ import axios from 'axios'
 import UpdateOnBlur from '@/components/UpdateOnBlur'
 import _ from 'underscore';
 
+const SHAPES = [
+  'circle', 'square', 'x', 'diamond', 'cross', 'triangle'
+];
 const CRANE_ARM_LENGTH = 50;
 const settingsTemplate = {
   name: null,
@@ -145,7 +170,11 @@ export default {
       selectedSettings: _.extend({}, settingsTemplate),
       selectedSettingsOldVal: _.extend({}, settingsTemplate),
       settings: [],
-      dataPoints: [],
+      dataPoints: {
+        "Preview Sweep": [],
+        "Active Sweep": [],
+        "Area Data": [],
+      },
       clicking: false,
       state: {
         lat: 0,
@@ -156,7 +185,12 @@ export default {
       },
       currentRenderPoint: 1,
       horizons: [],
+      originX: 0,
+      originY: 50,
+      originZ: 0,
+      originAngle: 0,
       filter: x => x,
+      filterChanged: false
     }
   },
   watch: {
@@ -201,46 +235,38 @@ export default {
       this.reportChange("Angle finish", newval, oldval);
     },
     filter() {
-      this.drawScatterPlot(this.displayPoints);
-    },
+      this.drawScatterPlot(this.dataPoints);
+    },/*
     dataPoints() {
       this.drawScatterPlot(this.displayPoints);
-    }
+    },
+    'dataPoints.Active Sweep'() {
+      alert("updated active sweep");
+      this.drawScatterPlot(this.displayPoints);
+    }*/
   },
   computed: {
     hasChanges() {
       return !_.isEqual(this.selectedSettings, this.selectedSettingsOldVal);
     },
-    displayPoints() {
-      return _.filter(this.dataPoints, this.filter);
+    origin() {
+      return [parseFloat(this.originX), parseFloat(this.originY), parseFloat(this.originZ), parseFloat(this.originAngle)];
     }
   },
   mounted() {
     document.title = 'MARIA | Dashboard';
     this.loadSettings();
-    this.currentRenderPoint = 0;
-
-    /*
-        let render = () => {
-          if (this.currentRenderPoint < this.dataPoints.length) {
-            this.drawScatterPlot(this.displayPoints.slice(0,this.currentRenderPoint+1));
-            this.state.long = this.dataPoints[this.currentRenderPoint]['x'].toFixed(2);
-            this.state.lat = this.dataPoints[this.currentRenderPoint]['y'].toFixed(2);
-            this.state.depth = this.dataPoints[this.currentRenderPoint]['z'].toFixed(2);
-            this.state.angle = this.dataPoints[this.currentRenderPoint]['angle'].toFixed(2) + " degrees";
-            this.currentRenderPoint ++;
-
-          }
-        };
-
-        this.timer = setInterval(() => {if (!this.clicking) render()},1);
-    */
-
+    this.loadSweep();
   },
   beforeUnmount() {
-    clearInterval(this.timer)
+    clearInterval(this.timer);
   },
   methods: {
+    setHorizon(dMin,dMax) {
+      this.filterChanged = true;
+      this.filter=(x)=>x.z <= dMin && x.z > dMax;
+      this.selectedSettings.depth_max = dMax;
+    },
     computeHorizons() {
       let z = this.selectedSettings.z_increment;
       let dStart = this.selectedSettings.depth_start;
@@ -254,7 +280,7 @@ export default {
         let depthMax = search;
         let depthMin = search - z;
 
-        let sample = _.filter(this.dataPoints, (p) => {
+        let sample = _.filter(this.dataPoints['Area Data'], (p) => {
           return p.z <= depthMax && p.z > depthMin;
         });
         if (!sample.length) continue;
@@ -296,51 +322,65 @@ export default {
         }
       });
     },
+    loadSweep() {
+      axios.get('//localhost:3000/points', this.origin).then((response) => {
+        this.dataPoints["Area Data"] = response.data;
+        this.drawScatterPlot(this.dataPoints);
+      });
+    },
+    saveSweep() {
+      axios.post('//localhost:3000/points', this.dataPoints['Active Sweep']).then((response) => {
+        this.writeConsole("Sweep saved as " + response.data.sweep_id);
+      });
+    },
     writeConsole(text) {
       let date = new Date();
       this.consoleText.push(`[${date.toLocaleTimeString()}]: ${text}`);
     },
-    runPlotWithSettings() {
+    runPlotWithSettings(preview=true) {
       return this.plotTrench(
-          [0, 0, 0, 0],
-          parseFloat(this.selectedSettings.z_increment),
-          parseFloat(this.selectedSettings.radial_increment),
-          parseFloat(this.selectedSettings.radial_velocity),
-          parseFloat(this.selectedSettings.depth_start),
-          parseFloat(this.selectedSettings.depth_max),
-          parseFloat(this.selectedSettings.angle_start),
-          parseFloat(this.selectedSettings.angle_finish),
-          parseFloat(this.selectedSettings.min_distance),
+          this.origin,
+          this.selectedSettings.z_increment,
+          this.selectedSettings.radial_increment,
+          this.selectedSettings.radial_velocity,
+          this.selectedSettings.depth_start,
+          this.selectedSettings.depth_max,
+          this.selectedSettings.angle_start,
+          this.selectedSettings.angle_finish,
+          this.selectedSettings.min_distance,
           CRANE_ARM_LENGTH,
           this.selectedSettings.wall_angle,
+          preview
       );
     },
     previewTrench() {
-      this.filter = (x) => x;
+      //this.filter = (x) => x;
       let sweep = this.runPlotWithSettings();
       this.writeConsole('Generating data.');
-      this.dataPoints = sweep['points'];
-      //this.currentRenderPoint = this.dataPoints.length-1;
+      this.dataPoints['Preview Sweep'] = sweep['points'];
+      this.drawScatterPlot(this.dataPoints);
     },
     clearTimer() {
       clearInterval(this.timer);
     },
     digTrench() {
-      let sweep = this.runPlotWithSettings();
-      this.dataPoints = sweep['points'];
+      let sweep = this.runPlotWithSettings(false);
+      let points = sweep['points'];
       this.writeConsole('Starting animation.');
-
+      this.dataPoints['Preview Sweep'] = [];
+      this.dataPoints['Active Sweep'] = [];
       let i = 1;
       let render = (point) => {
-        this.drawScatterPlot(this.displayPoints.slice(0, point + 1));
-        this.state.long = this.dataPoints[point]['x'].toFixed(2);
-        this.state.lat = this.dataPoints[point]['y'].toFixed(2);
-        this.state.depth = this.dataPoints[point]['z'].toFixed(2);
-        this.state.angle = this.dataPoints[point]['angle'].toFixed(2) + " degrees";
+        this.dataPoints['Active Sweep'] = points.slice(0, point + 1);
+        this.state.long = this.dataPoints['Active Sweep'][point]['x'].toFixed(2);
+        this.state.lat = this.dataPoints['Active Sweep'][point]['y'].toFixed(2);
+        this.state.depth = this.dataPoints['Active Sweep'][point]['z'].toFixed(2);
+        this.state.angle = this.dataPoints['Active Sweep'][point]['angle'].toFixed(2) + " degrees";
+        this.drawScatterPlot(this.dataPoints);
       };
 
       this.timer = setInterval(() => {
-        if (i < this.dataPoints.length) {
+        if (i < points.length) {
           if (!this.clicking) {
             render(i);
             i++;
@@ -360,7 +400,8 @@ export default {
                angleFinish = 90,
                minDistance = 10,
                craneArmLength = 50,
-               wallAngles = 45) {
+               wallAngles = 45,
+               preview = true) {
 
       if (this.plot) {
         this.plot.data = [];
@@ -427,18 +468,19 @@ export default {
           let arc_length = (2 * Math.PI * dist) * ((shrunkAngleFinish - shrunkAngleStart) / 360);
           let step_size = radialVelocity / arc_length;
 
+
           if (direction === 1) {
             for (let angle = shrunkAngleStart; angle <= shrunkAngleFinish; angle += step_size) // at each angle
-              points.push(this.makePoint(origin, z, angle, dist, grades[counter]*(1+(Math.random() * 0.1)-0.1)));
+              points.push(this.makePoint(origin, z, angle, dist, preview ? null : grades[counter]*(1+(Math.random() * 0.1)-0.1)));
 
             // make sure we go to edge
-            points.push(this.makePoint(origin, z, shrunkAngleFinish, dist, grades[counter]*(1+(Math.random() * 0.1)-0.1)));
+            points.push(this.makePoint(origin, z, shrunkAngleFinish, dist, preview ? null : grades[counter]*(1+(Math.random() * 0.1)-0.1)));
           } else {
             for (let angle = shrunkAngleFinish; angle >= shrunkAngleStart; angle -= step_size) // at each angle
-              points.push(this.makePoint(origin, z, angle, dist, grades[counter]*(1+(Math.random() * 0.1)-0.1)));
+              points.push(this.makePoint(origin, z, angle, dist, preview ? null : grades[counter]*(1+(Math.random() * 0.1)-0.1)));
 
             // Make sure we go to the edge
-            points.push(this.makePoint(origin, z, shrunkAngleStart, dist, grades[counter]*(1+(Math.random() * 0.1)-0.1)));
+            points.push(this.makePoint(origin, z, shrunkAngleStart, dist, preview ? null : grades[counter]*(1+(Math.random() * 0.1)-0.1)));
           }
 
           direction = -direction;
@@ -453,7 +495,7 @@ export default {
 
     },
     makePoint(origin, depth, angle, dist, grade) {
-      let record = [];
+      let record = {};
       record['grade'] = grade;
       record['z'] = depth;
       record['x'] = origin[0] + dist * Math.cos(angle * (Math.PI / 180));
@@ -461,54 +503,60 @@ export default {
       record['angle'] = angle;
       return record;
     },
-    drawScatterPlot(rows) {
-
+    drawScatterPlot(traces) {
       function unpack(rows, key) {
         return rows.map(function (row) {
           return row[key];
         });
       }
 
-      var trace1 = {
-        x: unpack(rows, 'x'), y: unpack(rows, 'y'), z: unpack(rows, 'z'),
+      let plotTraces = [];
+      let counter = 0;
+      for(let name of Object.keys(traces)){
 
-        mode: 'markers',
-        name: "High grade",
+        let rows = _.filter(traces[name], this.filter);
+        let trace = {
+          x: unpack(rows, 'x'), y: unpack(rows, 'y'), z: unpack(rows, 'z'),
+          mode: 'markers',
+          name: name,
+          marker: {
+            size: 6,
+            color: unpack(rows, 'grade'),
+            colorscale: [
+              ['0.0', 'rgba(13, 8, 135,0.4)'],
+              ['0.03', 'rgba(17,0,168,0.4)'],
+              ['0.07', 'rgba(177, 42, 144,0.6)'],
+              ['0.2', 'rgba(225, 100, 98,0.7)'],
+              ['0.4', 'rgba(237, 121, 83,0.7)'],
+              ['0.5', 'rgba(253, 180, 47,0.7)'],
+              ['0.85', 'rgba(253,212,47,0.7)'],
+              ['1', 'rgba(0, 255, 33,0.7)'],
+            ],
+            custom_data: ['grade'],
+            showscale: true,
+            opacity: 0.8,
+            line: {
+              color: 'rgba(0,0,0,0.42)',
+              width: 0.5
+            },
+            symbol: SHAPES[counter],
 
-        marker: {
-          size: 6,
-          color: unpack(rows, 'grade'),
-          colorscale: [
-            ['0.0', 'rgba(13, 8, 135,0.4)'],
-            ['0.03', 'rgba(17,0,168,0.4)'],
-            ['0.07', 'rgba(177, 42, 144,0.6)'],
-            ['0.2', 'rgba(225, 100, 98,0.7)'],
-            ['0.4', 'rgba(237, 121, 83,0.7)'],
-            ['0.5', 'rgba(253, 180, 47,0.7)'],
-            ['0.85', 'rgba(253,212,47,0.7)'],
-            ['1', 'rgba(0, 255, 33,0.7)'],
-          ],
-          custom_data: ['grade'],
-          showscale: true,
-          opacity: 0.8,
-          line: {
-            color: 'rgba(0,0,0,0.42)',
-            width: 0.5
+            colorbar: {
+              title: 'Grade (g/ton)'
+            },
+            cmin: 0,
+            cmax: 4,
           },
-          symbol: 'circle',
 
-          colorbar: {
-            title: 'Grade (g/ton)'
-          },
-          cmin: 0,
-          cmax: 4,
-        },
+          type: 'scatter3d'
+        };
+        plotTraces.push(trace);
+        counter ++;
+      }
 
-        type: 'scatter3d'
-      };
 
       var layout = {
-        title: "Gold density",
+        /*title: "Gold density",*/
         height: 1000,
         width: 1500,
         margin: {
@@ -516,6 +564,12 @@ export default {
           r: 0,
           b: 0,
           t: 50
+        },
+        showlegend: true,
+        legend: {
+          x: 1,
+          xanchor: 'right',
+          y: 1
         },
         "uirevision": true,
         /*x:[-60,60],
@@ -525,8 +579,8 @@ export default {
       };
 
 
-      if (this.plot) Plotly.react('plot', [trace1], layout);
-      else this.plot = Plotly.newPlot('plot', [trace1], layout);
+      if (this.plot) Plotly.react('plot', plotTraces, layout);
+      else this.plot = Plotly.newPlot('plot', plotTraces, layout);
 
     },
   }
@@ -646,6 +700,11 @@ button:disabled {
 .stop:hover {
   background: #da190b;
 }
+
+.start:hover {
+  background: #68da0b;
+}
+
 
 .start {
   background-color: #4CAF50;

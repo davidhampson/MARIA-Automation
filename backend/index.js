@@ -14,7 +14,7 @@ var con = mysql.createConnection({
 
 //Here we are configuring express to use body-parser as middle-ware.
 app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
+app.use(bodyParser.json({limit: '50mb'}));
 
 app.use(function(req, res, next) {
     res.header('Access-Control-Allow-Origin', 'http://localhost:8080');
@@ -35,12 +35,30 @@ app.get('/points', (req, res) => {
 });
 
 app.post('/points', (req, res) => {
-    con.query("INSERT INTO points (x, y, z, gold_density) VALUES " +
-        `(${req.body.x}, ${req.body.y}, ${req.body.z}, ${req.body.gold_density})`, (error, result) => {
+
+    let sweep_id = null;
+    let point = req.body[0]; // first point is origin
+    con.query("INSERT INTO sweeps (locale_x, locale_y) VALUES " +
+        `(${point.x}, ${point.y})`, (error, result) => {
+        sweep_id = result['insertId'];
+        console.log("Insert sweep: ");
         console.log(result||error);
-        res.send(result);
+        let query = "INSERT INTO points (x, y, z, grade, sweep_id) VALUES ";
+        let counter = 0;
+        for (let point of req.body) {
+            let grade = point.grade??0;
+            query += `(${point.x}, ${point.y}, ${point.z}, ${grade}, ${sweep_id})`
+            counter ++
+            if (counter !== req.body.length) query += ", ";
+        }
+
+        con.query(query, (error, result) => {
+            console.log("Insert points: ");
+            console.log(result||error);
+            result['sweep_id']= sweep_id;
+            res.send(result);
+        });
     });
-    res.send();
 });
 
 app.put('/settings', (req, res) => {
