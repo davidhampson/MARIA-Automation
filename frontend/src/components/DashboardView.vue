@@ -114,7 +114,7 @@ export default {
       selectedSettings: _.extend({},settingsTemplate),
       selectedSettingsOldVal: _.extend({},settingsTemplate),
       settings: [],
-      points: [],
+      renderPoints: [],
       clicking: false,
       state: {
         lat: 0,
@@ -170,12 +170,12 @@ export default {
     this.currentRenderPoint = 0;
 
     let render = () => {
-      if (this.currentRenderPoint < this.points.length) {
-        this.drawScatterPlot(this.points.slice(0,this.currentRenderPoint+1));
-        this.state.long = this.points[this.currentRenderPoint]['x'].toFixed(2);
-        this.state.lat = this.points[this.currentRenderPoint]['y'].toFixed(2);
-        this.state.depth = this.points[this.currentRenderPoint]['z'].toFixed(2);
-        this.state.angle = this.points[this.currentRenderPoint]['angle'].toFixed(2) + " degrees";
+      if (this.currentRenderPoint < this.renderPoints.length) {
+        this.drawScatterPlot(this.renderPoints.slice(0,this.currentRenderPoint+1));
+        this.state.long = this.renderPoints[this.currentRenderPoint]['x'].toFixed(2);
+        this.state.lat = this.renderPoints[this.currentRenderPoint]['y'].toFixed(2);
+        this.state.depth = this.renderPoints[this.currentRenderPoint]['z'].toFixed(2);
+        this.state.angle = this.renderPoints[this.currentRenderPoint]['angle'].toFixed(2) + " degrees";
         this.currentRenderPoint ++;
 
       }
@@ -188,6 +188,18 @@ export default {
     clearInterval(this.timer)
   },
   methods: {
+    computeHorizons() {
+      let z = this.selectedSettings.z_increment;
+      let dStart = this.selectedSettings.depth_start;
+      let dMax = this.previewTrenchWithSelectedSettings()['max_depth'];
+      let table = [];
+      for(let search = dStart; search > dMax; search -= z) {
+        let sample = _.where(this.renderPoints, (p) => {return p.z < search && p.z > search + z;});
+        let record = {sample, average: _.reduce(sample, (m,s)=> m+s.grade, 0)/sample.length, key: search+z+ ":" + search}
+        table.push(record);
+      }
+      return table;
+    },
     reportChange(field,newval,oldval) {
       if (oldval == null) return;
       this.writeConsole(`${field} changed from ${oldval} to ${newval}`);
@@ -219,8 +231,8 @@ export default {
       this.consoleText.push(`[${date.toLocaleTimeString()}]: ${text}`);
     },
     previewTrenchWithSelectedSettings() {
-      let points = this.plotTrench(
-          [0,0,0],
+      let sweep = this.plotTrench(
+          [0,0,0,0],
           parseFloat(this.selectedSettings.z_increment),
           parseFloat(this.selectedSettings.radial_increment),
           parseFloat(this.selectedSettings.radial_velocity),
@@ -233,12 +245,12 @@ export default {
           this.selectedSettings.wall_angle,
       );
       this.writeConsole('Done.');
-      this.points = points;
-      this.currentRenderPoint = this.points.length-1;
+      this.renderPoints = sweep['points'];
+      this.currentRenderPoint = this.renderPoints.length-1;
     },
     plotTrenchWithSelectedSettings() {
-      let points = this.plotTrench(
-          [0,0,0],
+      let sweep = this.plotTrench(
+          [0,0,0,0],
           parseFloat(this.selectedSettings.z_increment),
           parseFloat(this.selectedSettings.radial_increment),
           parseFloat(this.selectedSettings.radial_velocity),
@@ -250,13 +262,13 @@ export default {
           CRANE_ARM_LENGTH,
           this.selectedSettings.wall_angle,
       );
-      this.points = points;
+      this.renderPoints = sweep['points'];
       this.writeConsole('Starting animation.');
       this.currentRenderPoint = 1;
 
 
     },
-    plotTrench(origin=[0,0,0],
+    plotTrench(origin=[0,0,0,0],
                zIncrement=5,
                radialIncrement=4,
                radialVelocity=350,
@@ -265,7 +277,7 @@ export default {
                angleStart=-90,
                angleFinish=90,
                minDistance=10,
-               distance=50,
+               craneArmLength=50,
                wallAngles=45) {
 
       if (this.plot){
@@ -282,8 +294,12 @@ export default {
         x: origin[0],
         y: origin[1],
         z: origin[2],
-        angle: 0,
+        angle: origin[3],
       });
+
+      angleStart = angleStart + origin[3];
+      angleFinish = angleFinish + origin[3];
+
       //TODO receive grade from attached IBF machine
       let gradesTemplate = ['.1','.2','.1','.15','3.5','.1','.1','.15','4','.2','.15','.1','.15','4','.2','.15','.1'];
       let grades = ['.1','.2','.1','.15'];
@@ -293,27 +309,37 @@ export default {
       let counter = 0;
       wallAngles *= (Math.PI/180); // convert to radians
       let shrink =  zIncrement / Math.tan(wallAngles);
-      let dist = distance-(shrink*counter);
       let direction = 1;
       let shrunkAngleStart = angleStart
       let shrunkAngleFinish = angleFinish;
 
       let z;
-
       for (z = depthStart; z >= maxDepth; z -= zIncrement) { //at each depth
-        if (distance-(shrink*counter) < (shrink*counter)) {
+
+        let dist= craneArmLength-(shrink*counter); // set dist to max
+        let minDist = minDistance + (shrink*counter);
+
+        if (dist < minDist) {
           z += zIncrement
           break;
         }
 
-        for (dist=distance-(shrink*counter); dist > (minDistance + (shrink*counter)); dist -= (radialIncrement)) { //at each distance from boat
-          let angleShrink =  Math.atan((depthStart-z)/(dist*Math.sin(wallAngles))) * (180/Math.PI);
-          //let angleShrink =  Math.atan((zIncrement)/(dist*Math.cos(wallAngles))) * (180/Math.PI);
-          //let angleShrink =  Math.atan((Math.cos(wallAngles))) * (180/Math.PI);
-          shrunkAngleStart = angleStart + ((angleShrink));
-          shrunkAngleFinish = angleFinish - ((angleShrink));
+        let finished = false;
+        /*for (dist=distance-(shrink*counter); dist >= (minDistance + (shrink*counter)) dist >= 0; dist -= (radialIncrement)) {*/ //at each distance from boat
+        while(!finished) {
+          if (dist <= (minDistance + (shrink*counter))) { // Make sure we trim right along the minimum edge
+            dist = minDistance + shrink*counter
+            finished = true;
+          }
+
+          //TODO why is this not 0 with 90degree wall angles
+          let angleShrink;
+          if (Math.abs(wallAngles- Math.PI/2) < 0.005) angleShrink = 0;
+          else angleShrink =  Math.atan((depthStart-z)/(dist*Math.sin(wallAngles))) * (180/Math.PI);
+
+          shrunkAngleStart = angleStart + angleShrink;
+          shrunkAngleFinish = angleFinish - angleShrink;
           if (shrunkAngleStart > shrunkAngleFinish) {
-            alert('condition hit');
             break;
           }
 
@@ -333,14 +359,16 @@ export default {
             // Make sure we go to the edge
             points.push(this.makePoint(origin,z,shrunkAngleStart,dist, grades[counter]));
           }
-          
+
           direction = -direction;
+          dist -= radialIncrement; // Pull the arm in
         }
-        if (shrunkAngleStart > shrunkAngleFinish) break;
+
+        //if (shrunkAngleStart > shrunkAngleFinish) break;
         counter++;
       }
-      //let depth_max = z+zIncrement;
-      return points;
+      let depth_max = z+zIncrement;
+      return {points, depth_max};
 
     },
     makePoint(origin,depth,angle,dist, grade) {
