@@ -112,7 +112,8 @@
           <table class="depthTable" v-show="horizons.length !== 0">
             <thead>
             <tr>
-              <th>Depth</th>
+              <th>Depth Start  (&lt;) </th>
+              <th>Depth Finish (&gt;=)</th>
               <th>Avg. Grade</th>
             </tr>
             </thead>
@@ -120,6 +121,7 @@
             <tr><td colspan="2" display="flex"></td></tr>
             <tr v-for="horizon in horizons" :key="horizon.depthMin"
                 @click="setHorizon(horizon.depthMax,horizon.depthMin)">
+              <td>{{ horizon.depthMin }}</td>
               <td>{{ horizon.depthMax }}</td>
               <td>{{ horizon.average }}</td>
             </tr>
@@ -264,24 +266,22 @@ export default {
   methods: {
     setHorizon(dMin,dMax) {
       this.filterChanged = true;
-      this.filter=(x)=>x.z <= dMin && x.z > dMax;
-      this.selectedSettings.depth_max = dMax;
+      this.filter=(x)=>x.z < dMax && x.z >= dMin;
+      this.selectedSettings.depth_max = dMin;
     },
     computeHorizons() {
       let z = this.selectedSettings.z_increment;
-      let dStart = this.selectedSettings.depth_start;
-      let dMax = this.runPlotWithSettings()['depth_max'];
+      let dMax = this.runPlotWithSettings(true)['depth_max'];
       let table = [];
 
       //TODO order by z, then get slices at indexes where it changes
+      for (let search = this.selectedSettings.depth_start; search > dMax; search -= z) {
 
-      for (let search = dStart; search > dMax; search -= z) {
-
-        let depthMax = search;
-        let depthMin = search - z;
+        let depthMax = search - z;
+        let depthMin = search;
 
         let sample = _.filter(this.dataPoints['Area Data'], (p) => {
-          return p.z <= depthMax && p.z > depthMin;
+          return p.z <= depthMin && p.z > depthMax && p.grade != null;
         });
         if (!sample.length) continue;
         let record = {
@@ -291,9 +291,10 @@ export default {
           depthMax
         }
         table.push(record);
+        search -=z;
       }
 
-      if (table === []) alert("No horizons generated (no data)");
+      if (table.length === 0) alert("No horizons generated (no data in sweep range)");
       return _.sortBy(table, (x) => (-x['average'] * 100) + (-x['depthMin'] / 100));
     },
     reportChange(field, newval, oldval) {
@@ -435,23 +436,29 @@ export default {
       let shrunkAngleStart = angleStart
       let shrunkAngleFinish = angleFinish;
 
-      let z;
-      for (z = depthStart; z >= maxDepth; z -= zIncrement) { //at each depth
+      let z = depthStart;
+      let finishedz = false;
+      while (!finishedz) {
+        if (z <= maxDepth) { // Make sure we trim right along the minimum edge
+          z = maxDepth
+          finishedz = true;
+        }
+      /*for (z = depthStart; z >= maxDepth; z -= zIncrement) { //at each depth*/
 
         let dist = craneArmLength - (shrink * counter); // set dist to max
         let minDist = minDistance + (shrink * counter);
 
         if (dist < minDist) {
-          z += zIncrement
+          z += zIncrement // we never went to this depth
           break;
         }
 
-        let finished = false;
+        let finishedx = false;
         /*for (dist=distance-(shrink*counter); dist >= (minDistance + (shrink*counter)) dist >= 0; dist -= (radialIncrement)) {*/ //at each distance from boat
-        while (!finished) {
+        while (!finishedx) {
           if (dist <= (minDistance + (shrink * counter))) { // Make sure we trim right along the minimum edge
             dist = minDistance + shrink * counter
-            finished = true;
+            finishedx = true;
           }
 
           //TODO why is this not 0 with 90degree wall angles
@@ -489,8 +496,9 @@ export default {
 
         //if (shrunkAngleStart > shrunkAngleFinish) break;
         counter++;
+        z-=zIncrement;
       }
-      let depth_max = z + zIncrement;
+      let depth_max = z;
       return {points, depth_max};
 
     },
