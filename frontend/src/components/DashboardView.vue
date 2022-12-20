@@ -57,7 +57,8 @@
             </span>
 
             <button class="start" @click="digTrench">Start Sweep</button>
-            <button @click="previewTrench">Preview Sweep</button>
+            <button v-show="!hasPreview" @click="previewTrench">Preview Sweep</button>
+            <button v-show="hasPreview" @click="clearPreview">Clear Preview</button>
             <button @click="saveSweep">Save Sweep</button>
             <button class="stop" @click="clearTimer">Emergency Lift</button>
           </fieldset>
@@ -102,13 +103,14 @@
           <label>Angle finish</label>
           <UpdateOnBlur v-model="selectedSettings.angle_finish"/>
         </span>
-          <button @disabled="dataPoints.length === 0" @click="horizons = computeHorizons()">
+          <button @disabled="dataPoints.length === 0" @click="computeHorizons">
             Compute Horizons
           </button>
 <!--
           <button @click="loadSweep">Load Points</button>
 -->
-          <button @click="previewTrench">Preview Sweep</button>
+          <button v-show="!hasPreview" @click="previewTrench">Preview Sweep</button>
+          <button v-show="hasPreview" @click="clearPreview">Clear Preview</button>
           <table class="depthTable" v-show="horizons.length !== 0">
             <thead>
             <tr>
@@ -119,16 +121,23 @@
             </thead>
             <tbody>
             <tr><td colspan="2" display="flex"></td></tr>
-            <tr v-for="horizon in horizons" :key="horizon.depthMin"
-                @click="setHorizon(horizon.depthMax,horizon.depthMin)">
-              <td>{{ horizon.depthMin }}</td>
-              <td>{{ horizon.depthMax }}</td>
-              <td>{{ horizon.average }}</td>
+            <tr v-for="h in horizons" :key="h.depthMin"
+                :class="{'horizon': h.depthMin === horizon}"
+                @click="setHorizon(h.depthMax,h.depthMin)">
+              <td>{{ h.depthMin }}</td>
+              <td>{{ h.depthMax }}</td>
+              <td>{{ h.average }}</td>
             </tr>
 
             </tbody>
           </table>
-          <button v-show="filterChanged" class="stop" @click="filter = (x)=>x; filterChanged=false">Clear filter</button>
+          <span v-show="horizons.length !== 0">
+            <label>Show only horizon</label>
+            <input style="height: auto;"  type="checkbox" v-model="showOnlyTargetHorizon" @change="checkFilters">
+          </span>
+          <button v-show="horizon!==null" class="stop" @click="clearHorizon">Reset Horizon</button>
+
+
 
         </fieldset>
       </div>
@@ -191,8 +200,14 @@ export default {
       originY: 50,
       originZ: 0,
       originAngle: 0,
-      filter: x => x,
-      filterChanged: false
+      horizon: null,
+      filter: {
+        "Preview Sweep": x=> x,
+        "Active Sweep": x=> x,
+        "Area Data": x=> x,
+      },
+      showOnlyTargetHorizon: false,
+      hasPreview: false
     }
   },
   watch: {
@@ -236,8 +251,11 @@ export default {
       this.selectedSettings.angle_finish = parseFloat(newval);
       this.reportChange("Angle finish", newval, oldval);
     },
-    filter() {
-      this.drawScatterPlot(this.dataPoints);
+    'filter.Area Data'() {
+      this.drawScatterPlot();
+    },
+    'filter.Preview Sweep'() {
+      this.drawScatterPlot();
     },/*
     dataPoints() {
       this.drawScatterPlot(this.displayPoints);
@@ -264,10 +282,26 @@ export default {
     clearInterval(this.timer);
   },
   methods: {
-    setHorizon(dMin,dMax) {
-      this.filterChanged = true;
-      this.filter=(x)=>x.z < dMax && x.z >= dMin;
-      this.selectedSettings.depth_max = dMin;
+    clearHorizon() {
+      this.filter["Area Data"] = (x)=>x;
+      this.horizon=null;
+      this.previewTrench();
+    },
+
+    checkFilters() {
+      if (!this.showOnlyTargetHorizon) this.filter["Preview Sweep"] = (x)=>x;
+      else
+        this.filter["Preview Sweep"] = (x)=>x.z <= this.horizon && x.z > this.horizon-this.selectedSettings.z_increment;
+
+      this.drawScatterPlot();
+    },
+    setHorizon(dMax,dMin) {
+      this.horizon = dMin
+      this.filter["Area Data"] = (x)=>x.z <= dMin && x.z > dMax;
+      if (!this.showOnlyTargetHorizon) this.filter["Preview Sweep"] = (x)=>x;
+      else
+        this.filter["Preview Sweep"] = (x)=>x.z <= dMin && x.z > dMax;
+      this.previewTrench();
     },
     computeHorizons() {
       let z = this.selectedSettings.z_increment;
@@ -295,11 +329,15 @@ export default {
       }
 
       if (table.length === 0) alert("No horizons generated (no data in sweep range)");
-      return _.sortBy(table, (x) => (-x['average'] * 100) + (-x['depthMin'] / 100));
+      table = _.sortBy(table, (x) => (-x['average'] * 100) + (-x['depthMin'] / 100));
+      this.horizons = table;
     },
     reportChange(field, newval, oldval) {
       if (oldval == null) return;
       this.writeConsole(`${field} changed from ${oldval} to ${newval}`);
+      if (this.hasPreview) {
+        this.previewTrench();
+      }
     },
     saveNewSettings() {
       this.selectedSettings.name = prompt("Name?");
@@ -326,7 +364,7 @@ export default {
     loadSweep() {
       axios.get('//localhost:3000/points', this.origin).then((response) => {
         this.dataPoints["Area Data"] = response.data;
-        this.drawScatterPlot(this.dataPoints);
+        this.drawScatterPlot();
       });
     },
     saveSweep() {
@@ -345,7 +383,7 @@ export default {
           this.selectedSettings.radial_increment,
           this.selectedSettings.radial_velocity,
           this.selectedSettings.depth_start,
-          this.selectedSettings.depth_max,
+          this.horizon ? this.horizon : this.selectedSettings.depth_max,
           this.selectedSettings.angle_start,
           this.selectedSettings.angle_finish,
           this.selectedSettings.min_distance,
@@ -354,12 +392,18 @@ export default {
           preview
       );
     },
+    clearPreview() {
+      this.writeConsole('Clearing preview.');
+      this.hasPreview = false;
+      this.dataPoints['Preview Sweep'] = null;
+      this.drawScatterPlot();
+    },
     previewTrench() {
-      //this.filter = (x) => x;
+      this.hasPreview = true;
       let sweep = this.runPlotWithSettings();
       this.writeConsole('Generating data.');
       this.dataPoints['Preview Sweep'] = sweep['points'];
-      this.drawScatterPlot(this.dataPoints);
+      this.drawScatterPlot();
     },
     clearTimer() {
       clearInterval(this.timer);
@@ -377,7 +421,7 @@ export default {
         this.state.lat = this.dataPoints['Active Sweep'][point]['y'].toFixed(2);
         this.state.depth = this.dataPoints['Active Sweep'][point]['z'].toFixed(2);
         this.state.angle = this.dataPoints['Active Sweep'][point]['angle'].toFixed(2) + " degrees";
-        this.drawScatterPlot(this.dataPoints);
+        this.drawScatterPlot();
       };
 
       this.timer = setInterval(() => {
@@ -461,10 +505,13 @@ export default {
             finishedx = true;
           }
 
-          //TODO why is this not 0 with 90degree wall angles
+          //TODO why is this not 0 with 90degree wall angles Yay! I fixed it :)
           let angleShrink;
-          if (Math.abs(wallAngles - Math.PI / 2) < 0.005) angleShrink = 0;
-          else angleShrink = Math.atan((depthStart - z) / (dist * Math.sin(wallAngles))) * (180 / Math.PI);
+          //if (Math.abs(wallAngles - Math.PI / 2) < 0.005) angleShrink = 0;
+          //else angleShrink = Math.atan((depthStart - z) / (dist * Math.sin(wallAngles))) * (180 / Math.PI);
+          //else
+          angleShrink = Math.asin((depthStart - z) / (dist * Math.tan(wallAngles))) * (180 / Math.PI);
+
 
           shrunkAngleStart = angleStart + angleShrink;
           shrunkAngleFinish = angleFinish - angleShrink;
@@ -511,7 +558,8 @@ export default {
       record['angle'] = angle;
       return record;
     },
-    drawScatterPlot(traces) {
+    drawScatterPlot() {
+      let traces = this.dataPoints;
       function unpack(rows, key) {
         return rows.map(function (row) {
           return row[key];
@@ -522,7 +570,7 @@ export default {
       let counter = 0;
       for(let name of Object.keys(traces)){
 
-        let rows = _.filter(traces[name], this.filter);
+        let rows = _.filter(traces[name], this.filter[name]);
         let trace = {
           x: unpack(rows, 'x'), y: unpack(rows, 'y'), z: unpack(rows, 'z'),
           mode: 'markers',
@@ -621,6 +669,11 @@ export default {
   text-align: center;
 }
 
+
+tr.horizon {
+  background: yellow;
+}
+
 .depthTable tbody tr:hover {
   background: #2c3e50;
   color: white;
@@ -686,6 +739,7 @@ button, input, select {
   background-color: #666666;
   height: 2em;
 }
+
 
 button:hover {
   background-color: #cccccc;
